@@ -128,9 +128,10 @@
   .add-item:hover{border-color:var(--accent);color:var(--accent);}
 
   .alan-item{display:flex;gap:6px;align-items:center;padding:6px 8px;background:#fff;border:1px solid var(--paper-line);border-radius:4px;margin-bottom:6px;flex-wrap:wrap;}
-  .alan-item select.ai-mode, .alan-item select.ai-mode-single{
+  .alan-item select.ai-mode, .alan-item select.ai-mode-single, .alan-item select.ai-tip, .alan-item select.ai-malzeme{
     font-size:11.5px;padding:5px 6px;border:1px solid var(--paper-line);border-radius:4px;color:var(--ink-soft);font-family:'Inter',sans-serif;
   }
+  .alan-item input.ai-adet{width:70px;}
   .alan-item input{width:110px;padding:5px 7px;border:1px solid var(--paper-line);border-radius:4px;font-size:12.5px;font-family:'IBM Plex Mono',monospace;}
   .alan-item .ai-val{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft);background:var(--card-2);padding:3px 8px;border-radius:4px;}
   .alan-item .ai-sil{background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:2px 4px;}
@@ -236,8 +237,9 @@ function num(v){ const n = parseFloat(String(v==null?"":v).replace(",", ".")); r
 
 function alanItemValue(item){
   if(!item) return 0;
-  if(item.mode === "direkt") return num(item.m2);
-  return num(item.genislik) * num(item.yukseklik);
+  const base = item.mode === "direkt" ? num(item.m2) : num(item.genislik) * num(item.yukseklik);
+  const adet = (item.adet !== undefined && item.adet !== "") ? num(item.adet) : 1;
+  return base * (adet || 1);
 }
 
 function initVals(ct){
@@ -281,8 +283,8 @@ const MODULE_CONFIG = {
     calcTypes:[{
       key:"oda", label:"Oda bazlı", kind:"oda-grup",
       groups:[
-        {key:"duvarlar", label:"Duvarlar", addLabel:"+ duvar ekle"},
-        {key:"bosluklar", label:"Boşluklar (kapı / pencere)", addLabel:"+ boşluk ekle"},
+        {key:"duvarlar", label:"Duvarlar", addLabel:"+ duvar ekle", hasMaterial:true, materialOptions:["Kara Tuğla 8,5","Kara Tuğla 13,5","Gazbeton 10","Gazbeton 15","Gazbeton 20"]},
+        {key:"bosluklar", label:"Boşluklar (kapı / pencere / kolon)", addLabel:"+ boşluk ekle", hasTip:true, tipOptions:["Pencere","Kapı","Kolon"]},
       ],
       compute:v => {
         const walls = (v.duvarlar||[]).reduce((s,it)=>s+alanItemValue(it),0);
@@ -298,7 +300,7 @@ const MODULE_CONFIG = {
       extraFields:[{key:"tur", label:"Sıva türü", type:"select", options:["Kara sıva","Alçı sıva"]}],
       groups:[
         {key:"duvarlar", label:"Duvarlar", addLabel:"+ duvar ekle"},
-        {key:"bosluklar", label:"Boşluklar (kapı / pencere)", addLabel:"+ boşluk ekle"},
+        {key:"bosluklar", label:"Boşluklar (kapı / pencere / kolon)", addLabel:"+ boşluk ekle", hasTip:true, tipOptions:["Pencere","Kapı","Kolon"]},
       ],
       compute:v => {
         const walls = (v.duvarlar||[]).reduce((s,it)=>s+alanItemValue(it),0);
@@ -528,7 +530,11 @@ function getAllRecords(){
     state.data[k].rows.forEach(r => {
       const miktar = rowMiktar(cfg, r);
       const birimFiyat = num(r.birimFiyat);
-      records.push({ modul: cfg.label, mekan: r.mekan, miktar, birim: cfg.birim, birimFiyat, tutar: miktar*birimFiyat, not: r.not });
+      let malzeme = "";
+      if(r.vals && Array.isArray(r.vals.duvarlar)){
+        malzeme = [...new Set(r.vals.duvarlar.map(it => it.malzeme).filter(Boolean))].join(", ");
+      }
+      records.push({ modul: cfg.label, mekan: r.mekan, miktar, birim: cfg.birim, birimFiyat, tutar: miktar*birimFiyat, malzeme, not: r.not });
     });
   });
   return records;
@@ -538,12 +544,12 @@ function toCsvValue(v){ return `"${String(v==null?"":v).replace(/"/g,'""')}"`; }
 
 function downloadCSV(){
   const records = getAllRecords();
-  const header = ["Şantiye","Dönem","Hakediş No","Modül","Mekan","Miktar","Birim","Birim Fiyat","Tutar","Not"];
+  const header = ["Şantiye","Dönem","Hakediş No","Modül","Mekan","Miktar","Birim","Birim Fiyat","Tutar","Malzeme","Not"];
   const lines = [header.map(toCsvValue).join(";")];
   records.forEach(r => {
     lines.push([
       state.site, state.period, state.hakedisNo,
-      r.modul, r.mekan, fmtNum(r.miktar), r.birim, fmtNum(r.birimFiyat), fmtNum(r.tutar), r.not
+      r.modul, r.mekan, fmtNum(r.miktar), r.birim, fmtNum(r.birimFiyat), fmtNum(r.tutar), r.malzeme, r.not
     ].map(toCsvValue).join(";"));
   });
   const csv = "\uFEFF" + lines.join("\r\n");
@@ -569,7 +575,16 @@ function renderFieldInput(cfg, row, field){
   return `<input type="text" data-field="${field.key}" value="${escapeAttr(val)}" placeholder="0">`;
 }
 
-function renderAlanItemHtml(groupKey, item){
+function renderAlanItemHtml(group, item){
+  const groupKey = group.key;
+  const tipSelect = group.hasTip ? `<select class="ai-tip" data-group="${groupKey}" data-item="${item.id}">
+      <option value="">Tür seç</option>
+      ${group.tipOptions.map(t => `<option value="${t}" ${item.tip===t?"selected":""}>${t}</option>`).join("")}
+    </select>` : "";
+  const materialSelect = group.hasMaterial ? `<select class="ai-malzeme" data-group="${groupKey}" data-item="${item.id}">
+      <option value="">Malzeme seç</option>
+      ${group.materialOptions.map(m => `<option value="${m}" ${item.malzeme===m?"selected":""}>${m}</option>`).join("")}
+    </select>` : "";
   const modeSel = `<select class="ai-mode" data-group="${groupKey}" data-item="${item.id}">
       <option value="boyut" ${item.mode!=="direkt"?"selected":""}>Uzunluk × Genişlik</option>
       <option value="direkt" ${item.mode==="direkt"?"selected":""}>Direkt m²</option>
@@ -578,9 +593,13 @@ function renderAlanItemHtml(groupKey, item){
     ? `<input type="text" data-group="${groupKey}" data-item="${item.id}" data-key="m2" value="${escapeAttr(item.m2)}" placeholder="m²">`
     : `<input type="text" data-group="${groupKey}" data-item="${item.id}" data-key="genislik" value="${escapeAttr(item.genislik)}" placeholder="Genişlik (m)">
        <input type="text" data-group="${groupKey}" data-item="${item.id}" data-key="yukseklik" value="${escapeAttr(item.yukseklik)}" placeholder="Yükseklik (m)">`;
+  const adetInput = `<input type="text" class="ai-adet" data-group="${groupKey}" data-item="${item.id}" data-key="adet" value="${escapeAttr(item.adet)}" placeholder="Adet" title="Aynısından kaç adet var (boşsa 1 kabul edilir)">`;
   return `<div class="alan-item">
+    ${tipSelect}
+    ${materialSelect}
     ${modeSel}
     ${inputs}
+    ${adetInput}
     <span class="ai-val">${fmtNum(alanItemValue(item))} m²</span>
     <button class="ai-sil" data-group="${groupKey}" data-item="${item.id}" title="sil">✕</button>
   </div>`;
@@ -614,7 +633,7 @@ function renderCalcBody(cfg, ct, row){
       const items = row.vals[g.key];
       html += `<div class="subgroup">
         <div class="subgroup-head"><span>${g.label}</span><button class="add-item" data-group="${g.key}">${g.addLabel}</button></div>
-        ${items.map(it => renderAlanItemHtml(g.key, it)).join("") || '<p class="empty-note" style="margin:2px 0 8px;">Henüz eklenmedi.</p>'}
+        ${items.map(it => renderAlanItemHtml(g, it)).join("") || '<p class="empty-note" style="margin:2px 0 8px;">Henüz eklenmedi.</p>'}
       </div>`;
     });
     return html;
@@ -742,7 +761,7 @@ function renderModulePanel(modKey){
       btn.addEventListener("click", () => {
         const g = btn.dataset.group;
         if(!row.vals[g]) row.vals[g] = [];
-        row.vals[g].push({ id: uid(), mode:"boyut", genislik:"", yukseklik:"", m2:"" });
+        row.vals[g].push({ id: uid(), mode:"boyut", genislik:"", yukseklik:"", m2:"", adet:"", tip:"", malzeme:"" });
         renderModulePanel(modKey);
         renderMetrics();
         scheduleSave();
@@ -755,6 +774,24 @@ function renderModulePanel(modKey){
         const g = sel.dataset.group, itemId = sel.dataset.item;
         const item = (row.vals[g] || []).find(it => it.id === itemId);
         if(item){ item.mode = e.target.value; renderModulePanel(modKey); renderMetrics(); scheduleSave(); }
+      });
+    });
+
+    // oda-grup: boşluk türü (pencere/kapı/kolon)
+    card.querySelectorAll(".ai-tip").forEach(sel => {
+      sel.addEventListener("change", e => {
+        const g = sel.dataset.group, itemId = sel.dataset.item;
+        const item = (row.vals[g] || []).find(it => it.id === itemId);
+        if(item){ item.tip = e.target.value; scheduleSave(); }
+      });
+    });
+
+    // oda-grup: duvar malzemesi (bilgi amaçlı, hesaplamayı etkilemez)
+    card.querySelectorAll(".ai-malzeme").forEach(sel => {
+      sel.addEventListener("change", e => {
+        const g = sel.dataset.group, itemId = sel.dataset.item;
+        const item = (row.vals[g] || []).find(it => it.id === itemId);
+        if(item){ item.malzeme = e.target.value; scheduleSave(); }
       });
     });
 
@@ -884,6 +921,7 @@ function renderKayitlarPanel(){
     <td class="num">${fmtNum(r.miktar)} ${r.birim}</td>
     <td class="num">${fmtTRY(r.birimFiyat)}</td>
     <td class="num">${fmtTRY(r.tutar)}</td>
+    <td>${escapeHtml(r.malzeme) || "—"}</td>
     <td>${escapeHtml(r.not)}</td>
   </tr>`).join("");
 
@@ -899,7 +937,7 @@ function renderKayitlarPanel(){
     </div>
     ${records.length === 0 ? '<p class="empty-note">Henüz kayıt yok.</p>' : `
     <table class="kayit-table">
-      <thead><tr><th>Modül</th><th>Mekan</th><th>Miktar</th><th>Birim fiyat</th><th>Tutar</th><th>Not</th></tr></thead>
+      <thead><tr><th>Modül</th><th>Mekan</th><th>Miktar</th><th>Birim fiyat</th><th>Tutar</th><th>Malzeme</th><th>Not</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>`}
     <div class="placeholder-note">Bu tablo mevcut şantiye ve dönem için tüm modüllerdeki kayıtları listeler. İndirilen CSV dosyasını Google Sheets veya Excel'e sürükleyip açabilirsiniz.</div>
