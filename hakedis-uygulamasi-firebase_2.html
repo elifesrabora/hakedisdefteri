@@ -281,23 +281,9 @@ const MODULE_CONFIG = {
   duvar: {
     label:"Duvar", color:"var(--c-duvar)", birim:"m²",
     calcTypes:[{
-      key:"direkt", label:"Metraj", kind:"fields",
-      fields:[
-        {key:"duvarM2", label:"Duvar (m²)", type:"number"},
-        {key:"tavanM2", label:"Tavan (m²)", type:"number"},
-        {key:"kirisM2", label:"Kiriş (m²)", type:"number"},
-        {key:"kolonM2", label:"Kolon (m²)", type:"number"},
-      ],
-      compute:v => num(v.duvarM2) + num(v.tavanM2) + num(v.kirisM2) + num(v.kolonM2)
-    }]
-  },
-  siva: {
-    label:"Sıva", color:"var(--c-siva)", birim:"m²",
-    calcTypes:[{
       key:"oda", label:"Oda bazlı", kind:"oda-grup",
-      extraFields:[{key:"tur", label:"Sıva türü", type:"select", options:["Kara sıva","Alçı sıva"]}],
       groups:[
-        {key:"duvarlar", label:"Duvarlar", addLabel:"+ duvar ekle"},
+        {key:"duvarlar", label:"Duvarlar", addLabel:"+ duvar ekle", hasMaterial:true, materialOptions:["Kara Tuğla 8,5","Kara Tuğla 13,5","Gazbeton 10","Gazbeton 15","Gazbeton 20"]},
         {key:"bosluklar", label:"Boşluklar (kapı / pencere / kolon)", addLabel:"+ boşluk ekle", hasTip:true, tipOptions:["Pencere","Kapı","Kolon"]},
       ],
       compute:v => {
@@ -305,6 +291,20 @@ const MODULE_CONFIG = {
         const openings = (v.bosluklar||[]).reduce((s,it)=>s+alanItemValue(it),0);
         return Math.max(0, walls - openings);
       }
+    }]
+  },
+  siva: {
+    label:"Sıva", color:"var(--c-siva)", birim:"m²",
+    calcTypes:[{
+      key:"direkt", label:"Metraj", kind:"fields",
+      fields:[
+        {key:"tur", label:"Sıva türü", type:"select", options:["Kara sıva","Alçı sıva"]},
+        {key:"duvarM2", label:"Duvar (m²)", type:"number"},
+        {key:"tavanM2", label:"Tavan (m²)", type:"number"},
+        {key:"kirisM2", label:"Kiriş (m²)", type:"number"},
+        {key:"kolonM2", label:"Kolon (m²)", type:"number"},
+      ],
+      compute:v => num(v.duvarM2) + num(v.tavanM2) + num(v.kirisM2) + num(v.kolonM2)
     }]
   },
   alcipan: {
