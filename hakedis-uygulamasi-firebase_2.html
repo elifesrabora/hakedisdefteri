@@ -526,6 +526,8 @@ function renderMetrics(){
 function escapeAttr(v){ return (v || "").toString().replace(/"/g, "&quot;"); }
 function escapeHtml(v){ return (v || "").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
+let kayitlarFilter = { modul: "", tur: "" };
+
 function getAllRecords(){
   const records = [];
   MODULE_KEYS.forEach(k => {
@@ -537,16 +539,24 @@ function getAllRecords(){
       if(r.vals && Array.isArray(r.vals.duvarlar)){
         malzeme = [...new Set(r.vals.duvarlar.map(it => it.malzeme).filter(Boolean))].join(", ");
       }
-      records.push({ modul: cfg.label, mekan: r.mekan, miktar, birim: cfg.birim, birimFiyat, tutar: miktar*birimFiyat, malzeme, not: r.not });
+      const tur = (r.vals && r.vals.tur) ? r.vals.tur : "";
+      records.push({ modulKey: k, modul: cfg.label, mekan: r.mekan, miktar, birim: cfg.birim, birimFiyat, tutar: miktar*birimFiyat, malzeme, tur, not: r.not });
     });
   });
   return records;
 }
 
+function getFilteredRecords(){
+  return getAllRecords().filter(r =>
+    (!kayitlarFilter.modul || r.modulKey === kayitlarFilter.modul) &&
+    (!kayitlarFilter.tur || r.tur === kayitlarFilter.tur)
+  );
+}
+
 function toCsvValue(v){ return `"${String(v==null?"":v).replace(/"/g,'""')}"`; }
 
 function downloadCSV(){
-  const records = getAllRecords();
+  const records = getFilteredRecords();
   const header = ["Şantiye","Dönem","Hakediş No","Modül","Mekan","Miktar","Birim","Birim Fiyat","Tutar","Malzeme","Not"];
   const lines = [header.map(toCsvValue).join(";")];
   records.forEach(r => {
@@ -915,7 +925,7 @@ async function importBackupFile(file){
 
 function renderKayitlarPanel(){
   const panel = document.getElementById("panel");
-  const records = getAllRecords();
+  const records = getFilteredRecords();
   const grandTutar = records.reduce((s,r) => s + r.tutar, 0);
 
   const rowsHtml = records.map(r => `<tr>
@@ -928,22 +938,45 @@ function renderKayitlarPanel(){
     <td>${escapeHtml(r.not)}</td>
   </tr>`).join("");
 
+  const moduleFilterOptions = MODULE_KEYS.map(k => `<option value="${k}" ${kayitlarFilter.modul===k?"selected":""}>${MODULE_CONFIG[k].label}</option>`).join("");
+  const turFilterHtml = kayitlarFilter.modul === "siva" ? `
+    <div class="field-item" style="max-width:160px;">
+      <label>Sıva türü</label>
+      <select id="filterTur">
+        <option value="">Tümü</option>
+        <option value="Kara sıva" ${kayitlarFilter.tur==="Kara sıva"?"selected":""}>Kara sıva</option>
+        <option value="Alçı sıva" ${kayitlarFilter.tur==="Alçı sıva"?"selected":""}>Alçı sıva</option>
+      </select>
+    </div>` : "";
+
   panel.innerHTML = `
     <div class="module-head">
       <span class="swatch" style="background:var(--accent)"></span>
       <h2>Tüm Kayıtlar</h2>
     </div>
+
+    <div class="extra-fields" style="padding:0 0 10px;">
+      <div class="field-item" style="max-width:160px;">
+        <label>Modül</label>
+        <select id="filterModul">
+          <option value="">Tümü</option>
+          ${moduleFilterOptions}
+        </select>
+      </div>
+      ${turFilterHtml}
+    </div>
+
     <div class="row-summary">
       <div class="rs-item">Toplam kalem: <b>${records.length}</b></div>
       <div class="rs-item">Toplam tutar: <b>${fmtTRY(grandTutar)}</b></div>
       <button class="addrow" id="exportCsvBtn">⬇ Excel / CSV indir</button>
     </div>
-    ${records.length === 0 ? '<p class="empty-note">Henüz kayıt yok.</p>' : `
+    ${records.length === 0 ? '<p class="empty-note">Bu filtreyle eşleşen kayıt yok.</p>' : `
     <table class="kayit-table">
       <thead><tr><th>Modül</th><th>Mekan</th><th>Miktar</th><th>Birim fiyat</th><th>Tutar</th><th>Malzeme</th><th>Not</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>`}
-    <div class="placeholder-note">Bu tablo mevcut şantiye ve dönem için tüm modüllerdeki kayıtları listeler. İndirilen CSV dosyasını Google Sheets veya Excel'e sürükleyip açabilirsiniz.</div>
+    <div class="placeholder-note">Bu tablo mevcut şantiye ve dönem için (seçtiğiniz filtreye göre) kayıtları listeler. İndirilen CSV dosyasını Google Sheets veya Excel'e sürükleyip açabilirsiniz.</div>
 
     <div class="backup-box">
       <h3>Tam yedek</h3>
@@ -955,6 +988,19 @@ function renderKayitlarPanel(){
       </div>
     </div>
   `;
+
+  document.getElementById("filterModul").addEventListener("change", e => {
+    kayitlarFilter.modul = e.target.value;
+    if(kayitlarFilter.modul !== "siva") kayitlarFilter.tur = "";
+    renderKayitlarPanel();
+  });
+  const filterTurEl = document.getElementById("filterTur");
+  if(filterTurEl){
+    filterTurEl.addEventListener("change", e => {
+      kayitlarFilter.tur = e.target.value;
+      renderKayitlarPanel();
+    });
+  }
 
   document.getElementById("exportCsvBtn").addEventListener("click", downloadCSV);
   document.getElementById("exportAllBtn").addEventListener("click", exportAllBackup);
