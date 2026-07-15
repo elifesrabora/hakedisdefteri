@@ -303,8 +303,13 @@ const MODULE_CONFIG = {
         {key:"tavanM2", label:"Tavan (m²)", type:"number"},
         {key:"kirisM2", label:"Kiriş (m²)", type:"number"},
         {key:"kolonM2", label:"Kolon (m²)", type:"number"},
+        {key:"bosluklarKapi", label:"Boşluk Kapı (m²)", type:"number"},
+        {key:"bosluklarPencere", label:"Boşluk Pencere (m²)", type:"number"},
       ],
-      compute:v => num(v.duvarM2) + num(v.tavanM2) + num(v.kirisM2) + num(v.kolonM2)
+      compute:v => Math.max(0,
+        num(v.duvarM2) + num(v.tavanM2) + num(v.kirisM2) + num(v.kolonM2)
+        - num(v.bosluklarKapi) - num(v.bosluklarPencere)
+      )
     }]
   },
   alcipan: {
